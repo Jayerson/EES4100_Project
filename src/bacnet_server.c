@@ -1,3 +1,19 @@
+/* major functions
+pthread_mutex_t t*second_tick()
+Update_Analog_Input_Read_Property()
+index
+bacnet_object_functions_t server_objects[]
+register_with_bbmd()
+*minute_tick()
+*second_tick()
+ms_tick()
+*connect() - mine
+
+int main call
+
+int main
+*/
+
 #include <modbus-tcp.h>
 #include <stdio.h>
 #include <errno.h>
@@ -63,8 +79,10 @@ static int Update_Analog_Input_Read_Property(
      *
      * Without reconfiguring libbacnet, a maximum of 4 values may be sent */
     bacnet_Analog_Input_Present_Value_Set(0, test_data[index++]);
-    /* bacnet_Analog_Input_Present_Value_Set(1, test_data[index++]); */
-    /* bacnet_Analog_Input_Present_Value_Set(2, test_data[index++]); */
+    bacnet_Analog_Input_Present_Value_Set(1, test_data[index++]);
+    bacnet_Analog_Input_Present_Value_Set(2, test_data[index++]);
+    bacnet_Analog_Input_Present_Value_Set(3, test_data[index++]);
+// 4 instances
     
     if (index == NUM_TEST_DATA) index = 0;
 
@@ -213,6 +231,37 @@ static void ms_tick(void) {
 		    SERVICE_CONFIRMED_##service,	\
 		    bacnet_handler_##handler)
 
+
+int *connect (void) {
+  modbus_t *mb;
+  uint16_t tab_reg[32];
+
+  mb = modbus_new_tcp("127.0.0.1", 502);
+  modbus_connect(mb);
+
+//check connection
+  if (modbus_connect(mb) == -1) {
+     fprintf(stderr, "Connection failed: %s\n", modbus_strerror (errno));
+     modbus_free(mb);
+     return -1;
+     }
+
+// Read 5 registers from the address 0
+  modbus_read_registers(mb, 0, 5, tab_reg);
+
+  modbus_close(mb);
+  modbus_free(mb);
+
+// loop here: linked list
+// do work here
+    
+    /* Loop:
+     *	    Read the required number of registers from the modbus server
+     *	    Store the register data into the tail of a linked list 
+     */
+return 0;
+}
+
 int main(int argc, char **argv) {
     uint8_t rx_buf[bacnet_MAX_MPDU];
     uint16_t pdu_len;
@@ -241,47 +290,8 @@ int main(int argc, char **argv) {
     pthread_create(&minute_tick_id, 0, minute_tick, NULL);
     pthread_create(&second_tick_id, 0, second_tick, NULL);
 
-// do work here
-    
-    /* Start another thread here to retrieve your allocated registers from the
-     * modbus server. This thread should have the following structure (in a
-     * separate function):
-     *
-     * Initialise:
-     *	    Connect to the modbus server
-     *
-     * Loop:
-     *	    Read the required number of registers from the modbus server
-     *	    Store the register data into the tail of a linked list 
-     */
-
-    /* modify:
-     * int main (void) {
-     *
-     *  modbus_t *mb;
-     *  uint16_t tab_reg[32];
-     *
-     *  mb = modbus_new_tcp("127.0.0.1", 502);
-     *  modbus_connect(mb);
-     *
-     * //check connection
-     *  if (modbus_connect(mb) == -1) {
-     *     fprintf(stderr, "Connection failed: %s\n", modbus_strerror (errno));
-     *     modbus_free(mb);
-     *     return -1;
-     *       }
-     *
-     * // Read 5 registers from the address 0
-     *  modbus_read_registers(mb, 0, 5, tab_reg);
-     *
-     *  modbus_close(mb);
-     *  modbus_free(mb);
-     *
-     * // loop here
-     *
-     *return 0;
-     *}
-     */
+//start server and loop
+    pthread_create(connect, NULL);
 
     while (1) {
 	pdu_len = bacnet_datalink_receive(
