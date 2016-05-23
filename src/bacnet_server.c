@@ -106,29 +106,8 @@ static bacnet_object_functions_t server_objects[] = {
 	    NULL, /* COV */
 	    NULL, /* COV Clear */
 	    NULL  /* Intrinsic Reporting */
-    },int main (void) {
+    }, 
 
-  modbus_t *mb;
-  uint16_t tab_reg[32];
-
-  mb = modbus_new_tcp("127.0.0.1", 502);
-  modbus_connect(mb);
-
-//check connection
-  if (modbus_connect(mb) == -1) {
-     fprintf(stderr, "Connection failed: %s\n", modbus_strerror (errno));
-     modbus_free(mb);
-     return -1;
-       }
-
-  /* Read 5 registers from the address 0 */
-  modbus_read_registers(mb, 0, 5, tab_reg);
-
-  modbus_close(mb);
-  modbus_free(mb);
-
-return 0;
-}
     {bacnet_OBJECT_ANALOG_INPUT,
             bacnet_Analog_Input_Init,
             bacnet_Analog_Input_Count,
@@ -232,7 +211,7 @@ static void ms_tick(void) {
 		    bacnet_handler_##handler)
 
 
-int *connect (void) {
+int *server_connect (void) {
   modbus_t *mb;
   uint16_t tab_reg[32];
 
@@ -266,7 +245,7 @@ int main(int argc, char **argv) {
     uint8_t rx_buf[bacnet_MAX_MPDU];
     uint16_t pdu_len;
     BACNET_ADDRESS src;
-    pthread_t minute_tick_id, second_tick_id;
+    pthread_t minute_tick_id, second_tick_id, server_connect;
 
     bacnet_Device_Set_Object_Instance_Number(BACNET_INSTANCE_NO);
     bacnet_address_init();
@@ -291,7 +270,7 @@ int main(int argc, char **argv) {
     pthread_create(&second_tick_id, 0, second_tick, NULL);
 
 //start server and loop
-    pthread_create(connect, NULL);
+    pthread_create(&server_connect, 0, server_connect, NULL);
 
     while (1) {
 	pdu_len = bacnet_datalink_receive(
