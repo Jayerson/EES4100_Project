@@ -43,6 +43,12 @@ int main
 #define BACNET_BBMD_TTL		    90
 #endif
 
+struct list_object_s {
+    char *string;                   /* 8 bytes */
+    int strlen;                     /* 4 bytes */
+    struct list_object_s *next;     /* 8 bytes */
+};
+
 // change address here: linked list setup below
 
 /* If you are trying out the test suite from home, this data matches the data
@@ -54,7 +60,69 @@ static uint16_t test_data[] = {
     0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
 #define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
 
-static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t list_data_flush = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t server = PTHREAD_MUTEX_INITIALIZER;
+static struct list_object_s *list_head;
+
+// DO WORK HERE
+// adds to end of list
+// included from Kim's example wholesale
+static void add_to_list(char *input) {
+    /* Allocate memory */
+    struct list_object_s *last_item;
+    struct list_object_s *new_item = malloc(sizeof(struct list_object_s));
+    if (!new_item) {
+        fprintf(stderr, "Malloc failed\n");
+        exit(1);
+    }
+
+    /* Set up the object */
+    new_item->string = strdup(input);
+    new_item->strlen = strlen(input);
+    new_item->next = NULL;
+
+    /* list_head is shared between threads, need to lock before access */
+    pthread_mutex_lock(&list_lock);
+
+    if (list_head == NULL) {
+        /* Adding the first object */
+        list_head = new_item;
+    } else {
+        /* Adding the nth object */
+        last_item = list_head;
+        while (last_item->next) last_item = last_item->next;
+        last_item->next = new_item;
+    }
+
+    /* Inform other functions that data is available */
+    pthread_cond_signal(&list_ready);
+    /* Release shared data lock */
+    pthread_mutex_unlock(&list_lock);
+}
+
+// gets from head of list and moves list on
+// from example
+static struct list_object_s *list_get_first(void) {
+    struct list_object_s *first_item;
+
+    first_item = list_head;
+    list_head = list_head->next;
+
+    return first_item;
+}
+
+//clears the list
+static void list_flush(void) {
+    pthread_mutex_lock(&list_lock);
+
+    while (list_head) {
+        pthread_cond_signal(&list_data_flush);
+        pthread_cond_wait(&list_data_flush, &list_lock);
+    }
+    pthread_mutex_unlock(&list_lock);
+}
 
 static int Update_Analog_Input_Read_Property(
 		BACNET_READ_PROPERTY_DATA *rpdata) {
@@ -68,6 +136,7 @@ static int Update_Analog_Input_Read_Property(
     printf("AI_Present_Value request for instance %i\n", instance_no);
 
 // do work here
+// *** call: list_get_first
 
     /* Update the values to be sent to the BACnet client here.
      * The data should be read from the head of a linked list. You are required
@@ -138,7 +207,7 @@ static void register_with_bbmd(void) {
 
 static void *minute_tick(void *arg) {
     while (1) {
-	pthread_mutex_lock(&timer_lock);
+	pthread_mutex_lock(&server);
 
 	/* Expire addresses once the TTL has expired */
 	bacnet_address_cache_timer(60);
@@ -151,7 +220,7 @@ static void *minute_tick(void *arg) {
 	 * bacnet_Notification_Class_find_recipient(); */
 	
 	/* Sleep for 1 minute */
-	pthread_mutex_unlock(&timer_lock);
+	pthread_mutex_unlock(&server);
 	sleep(60);
     }
     return arg;
@@ -159,7 +228,7 @@ static void *minute_tick(void *arg) {
 
 static void *second_tick(void *arg) {
     while (1) {
-	pthread_mutex_lock(&timer_lock);
+	pthread_mutex_lock(&server);
 
 	/* Invalidates stale BBMD foreign device table entries */
 	bacnet_bvlc_maintenance_timer(1);
@@ -189,7 +258,7 @@ static void *second_tick(void *arg) {
 	 * bacnet_Device_local_reporting(); */
 	
 	/* Sleep for 1 second */
-	pthread_mutex_unlock(&timer_lock);
+	pthread_mutex_unlock(&server);
 	sleep(1);
     }
     return arg;
@@ -234,6 +303,7 @@ int *server_connect (void) {
 // loop here: linked list
 // do work here
     
+// *** call: add_to_list
     /* Loop:
      *	    Read the required number of registers from the modbus server
      *	    Store the register data into the tail of a linked list 
@@ -246,6 +316,8 @@ int main(int argc, char **argv) {
     uint16_t pdu_len;
     BACNET_ADDRESS src;
     pthread_t minute_tick_id, second_tick_id, server_connect;
+
+    list_flush();		//clear before starting
 
     bacnet_Device_Set_Object_Instance_Number(BACNET_INSTANCE_NO);
     bacnet_address_init();
@@ -280,9 +352,9 @@ int main(int argc, char **argv) {
 	    /* May call any registered handler.
 	     * Thread safety: May block, however we still need to guarantee
 	     * atomicity with the timers, so hold the lock anyway */
-	    pthread_mutex_lock(&timer_lock);
+	    pthread_mutex_lock(&server);
 	    bacnet_npdu_handler(&src, rx_buf, pdu_len);
-	    pthread_mutex_unlock(&timer_lock);
+	    pthread_mutex_unlock(&server);
 	}
 
 	ms_tick();
