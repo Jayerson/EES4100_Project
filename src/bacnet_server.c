@@ -7,9 +7,10 @@ register_with_bbmd()
 *minute_tick()
 *second_tick()
 ms_tick()
-*connect() - mine
-
-int main call
+*server_connect() - mine
+add_to_list()
+*list_get_first()
+list_flush
 
 int main
 */
@@ -60,11 +61,12 @@ static uint16_t test_data[] = {
     0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
 #define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
 
-static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;
-static pthread_cond_t list_data_flush = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t server = PTHREAD_MUTEX_INITIALIZER;
-static struct list_object_s *list_head;
+static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list is locked
+static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;			// is list ready
+static pthread_cond_t list_data_flush = PTHREAD_COND_INITIALIZER;		// is list flushed
+static pthread_mutex_t server = PTHREAD_MUTEX_INITIALIZER;		// tells if server is active
+
+static struct list_object_s *list_head;		// pointer to start of list
 
 // DO WORK HERE
 // adds to end of list
@@ -124,6 +126,7 @@ static void list_flush(void) {
     pthread_mutex_unlock(&list_lock);
 }
 
+// this server sends to BACnet
 static int Update_Analog_Input_Read_Property(
 		BACNET_READ_PROPERTY_DATA *rpdata) {
 
@@ -158,6 +161,7 @@ static int Update_Analog_Input_Read_Property(
 not_pv:
     return bacnet_Analog_Input_Read_Property(rpdata);
 }
+//end of server-to-bacnet
 
 static bacnet_object_functions_t server_objects[] = {
     {bacnet_OBJECT_DEVICE,
@@ -280,6 +284,7 @@ static void ms_tick(void) {
 		    bacnet_handler_##handler)
 
 
+// client to modbus
 int *server_connect (void) {
   modbus_t *mb;
   uint16_t tab_reg[32];
@@ -310,6 +315,7 @@ int *server_connect (void) {
      */
 return 0;
 }
+//end of client
 
 int main(int argc, char **argv) {
     uint8_t rx_buf[bacnet_MAX_MPDU];
