@@ -1,20 +1,3 @@
-/* major functions
-pthread_mutex_t t*second_tick()
-Update_Analog_Input_Read_Property()
-index
-bacnet_object_functions_t server_objects[]
-register_with_bbmd()
-*minute_tick()
-*second_tick()
-ms_tick()
-*server_connect() - mine
-add_to_list()
-*list_get_first()
-list_flush
-
-int main
-*/
-
 #include <modbus-tcp.h>
 #include <stdio.h>
 #include <errno.h>
@@ -30,23 +13,24 @@ int main
 #include <libbacnet/ai.h>
 #include "bacnet_namespace.h"
 
-#define BACNET_INSTANCE_NO	    12
+#define BACNET_INSTANCE_NO	    12						//change instance
 #define BACNET_PORT		    0xBAC1
 #define BACNET_INTERFACE	    "lo"
 #define BACNET_DATALINK_TYPE	    "bvlc"
 #define BACNET_SELECT_TIMEOUT_MS    1	    /* ms */
 
+#define INST_NO		10
+
 #define RUN_AS_BBMD_CLIENT	    1
 
 #if RUN_AS_BBMD_CLIENT
 #define BACNET_BBMD_PORT	    0xBAC0
-#define BACNET_BBMD_ADDRESS	    "127.0.0.1"
+#define BACNET_BBMD_ADDRESS	    "127.0.0.1"					//change ip
 #define BACNET_BBMD_TTL		    90
 #endif
 
 struct list_object_s {
-    char *string;                   /* 8 bytes */
-    int strlen;                     /* 4 bytes */
+    uint16_t mdata;                  /* 8 bytes */
     struct list_object_s *next;     /* 8 bytes */
 };
 
@@ -64,14 +48,14 @@ static uint16_t test_data[] = {
 static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list is locked
 static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;			// is list ready
 static pthread_cond_t list_data_flush = PTHREAD_COND_INITIALIZER;		// is list flushed
-static pthread_mutex_t server = PTHREAD_MUTEX_INITIALIZER;		// tells if server is active
+static pthread_mutex_t timer = PTHREAD_MUTEX_INITIALIZER;		// tells if timer is active
 
-static struct list_object_s *list_head;		// pointer to start of list
+static struct list_object_s *list_head[INST_NO];		// pointer to start of list
 
 // DO WORK HERE
 // adds to end of list
 // included from Kim's example wholesale
-static void add_to_list(char *input) {
+static void add_to_list(uint16_t input,struct list_object_s **list_head) {
     /* Allocate memory */
     struct list_object_s *last_item;
     struct list_object_s *new_item = malloc(sizeof(struct list_object_s));
@@ -81,8 +65,7 @@ static void add_to_list(char *input) {
     }
 
     /* Set up the object */
-    new_item->string = strdup(input);
-    new_item->strlen = strlen(input);
+    new_item->mdata = input;		//gets modbus data
     new_item->next = NULL;
 
     /* list_head is shared between threads, need to lock before access */
@@ -106,7 +89,7 @@ static void add_to_list(char *input) {
 
 // gets from head of list and moves list on
 // from example
-static struct list_object_s *list_get_first(void) {
+static struct list_object_s *list_get_first(struct list_object_s **list_head) {
     struct list_object_s *first_item;
 
     first_item = list_head;
@@ -130,33 +113,16 @@ static void list_flush(void) {
 static int Update_Analog_Input_Read_Property(
 		BACNET_READ_PROPERTY_DATA *rpdata) {
 
-    static int index;
-    int instance_no = bacnet_Analog_Input_Instance_To_Index(
-			rpdata->object_instance);
+    struct list_object_s *cur_obj;				//structure: current data object
+    int insta_num = bacnet_Analog_Input_Instance_To_Index(
+			rpdata->object_instance);		//current instance
 
-    if (rpdata->object_property != bacnet_PROP_PRESENT_VALUE) goto not_pv;
+    if (rpdata->object_property != bacnet_PROP_PRESENT_VALUE) goto not_pv;	//bailout
+    if (list_head[insta_num] == NULL) goto not_pv;
 
-    printf("AI_Present_Value request for instance %i\n", instance_no);
-
-// do work here
-// *** call: list_get_first
-
-    /* Update the values to be sent to the BACnet client here.
-     * The data should be read from the head of a linked list. You are required
-     * to implement this list functionality.
-     *
-     * bacnet_Analog_Input_Present_Value_Set() 
-     *     First argument: Instance No
-     *     Second argument: data to be sent
-     *
-     * Without reconfiguring libbacnet, a maximum of 4 values may be sent */
-    bacnet_Analog_Input_Present_Value_Set(0, test_data[index++]);
-    bacnet_Analog_Input_Present_Value_Set(1, test_data[index++]);
-    bacnet_Analog_Input_Present_Value_Set(2, test_data[index++]);
-    bacnet_Analog_Input_Present_Value_Set(3, test_data[index++]);
-// 4 instances
-    
-    if (index == NUM_TEST_DATA) index = 0;
+	cur_obj = list_get_first(&list_head[insta_num]);			//calls list first item
+	printf("AI_Present_Value request for instance %i\n", insta_num);
+    bacnet_Analog_Input_Present_Value_Set(insta_num, cur_obj->mdata);		//sends current data to current instance
 
 not_pv:
     return bacnet_Analog_Input_Read_Property(rpdata);
@@ -211,20 +177,16 @@ static void register_with_bbmd(void) {
 
 static void *minute_tick(void *arg) {
     while (1) {
-	pthread_mutex_lock(&server);
+	pthread_mutex_lock(&timer);
 
 	/* Expire addresses once the TTL has expired */
 	bacnet_address_cache_timer(60);
 
 	/* Re-register with BBMD once BBMD TTL has expired */
 	register_with_bbmd();
-
-	/* Update addresses for notification class recipient list 
-	 * Requred for INTRINSIC_REPORTING
-	 * bacnet_Notification_Class_find_recipient(); */
 	
 	/* Sleep for 1 minute */
-	pthread_mutex_unlock(&server);
+	pthread_mutex_unlock(&timer);
 	sleep(60);
     }
     return arg;
@@ -232,7 +194,7 @@ static void *minute_tick(void *arg) {
 
 static void *second_tick(void *arg) {
     while (1) {
-	pthread_mutex_lock(&server);
+	pthread_mutex_lock(&timer);
 
 	/* Invalidates stale BBMD foreign device table entries */
 	bacnet_bvlc_maintenance_timer(1);
@@ -241,28 +203,7 @@ static void *second_tick(void *arg) {
 	 * checking for confirmed services */
 	bacnet_tsm_timer_milliseconds(1000);
 
-	/* Re-enables communications after DCC_Time_Duration_Seconds
-	 * Required for SERVICE_CONFIRMED_DEVICE_COMMUNICATION_CONTROL
-	 * bacnet_dcc_timer_seconds(1); */
-
-	/* State machine for load control object
-	 * Required for OBJECT_LOAD_CONTROL
-	 * bacnet_Load_Control_State_Machine_Handler(); */
-
-	/* Expires any COV subscribers that have finite lifetimes
-	 * Required for SERVICE_CONFIRMED_SUBSCRIBE_COV
-	 * bacnet_handler_cov_timer_seconds(1); */
-
-	/* Monitor Trend Log uLogIntervals and fetch properties
-	 * Required for OBJECT_TRENDLOG
-	 * bacnet_trend_log_timer(1); */
-	
-	/* Run [Object_Type]_Intrinsic_Reporting() for all objects in device
-	 * Required for INTRINSIC_REPORTING
-	 * bacnet_Device_local_reporting(); */
-	
-	/* Sleep for 1 second */
-	pthread_mutex_unlock(&server);
+	pthread_mutex_unlock(&timer);
 	sleep(1);
     }
     return arg;
@@ -283,36 +224,32 @@ static void ms_tick(void) {
 		    SERVICE_CONFIRMED_##service,	\
 		    bacnet_handler_##handler)
 
-
 // client to modbus
 int *server_connect (void) {
   modbus_t *mb;
   uint16_t tab_reg[32];
+  int cnt;
 
-  mb = modbus_new_tcp("127.0.0.1", 502);
+  mb = modbus_new_tcp("127.0.0.1", 502);								// change ip
   modbus_connect(mb);
 
-//check connection
+	//check connection
   if (modbus_connect(mb) == -1) {
      fprintf(stderr, "Connection failed: %s\n", modbus_strerror (errno));
      modbus_free(mb);
      return -1;
      }
-
-// Read 5 registers from the address 0
-  modbus_read_registers(mb, 0, 5, tab_reg);
-
+	// Read 5 registers from the address 0
+while (1)
+  { usleep(100000);
+    modbus_read_registers(mb, 0, 5, tab_reg);
+    printf("got value %x\n", tab_reg[0]);
+      for (cnt=0 ; cnt< INST_NO ; cnt++)
+	add_to_list(tab_reg[cnt],&list_head[cnt]);	// loop here: linked list
+      }
   modbus_close(mb);
   modbus_free(mb);
 
-// loop here: linked list
-// do work here
-    
-// *** call: add_to_list
-    /* Loop:
-     *	    Read the required number of registers from the modbus server
-     *	    Store the register data into the tail of a linked list 
-     */
 return 0;
 }
 //end of client
@@ -321,7 +258,7 @@ int main(int argc, char **argv) {
     uint8_t rx_buf[bacnet_MAX_MPDU];
     uint16_t pdu_len;
     BACNET_ADDRESS src;
-    pthread_t minute_tick_id, second_tick_id, server_connect;
+    pthread_t minute_tick_id, second_tick_id, server_id;
 
     list_flush();		//clear before starting
 
@@ -348,7 +285,7 @@ int main(int argc, char **argv) {
     pthread_create(&second_tick_id, 0, second_tick, NULL);
 
 //start server and loop
-    pthread_create(&server_connect, 0, server_connect, NULL);
+    pthread_create(&server_id, 0, server_connect, NULL);
 
     while (1) {
 	pdu_len = bacnet_datalink_receive(
@@ -358,9 +295,9 @@ int main(int argc, char **argv) {
 	    /* May call any registered handler.
 	     * Thread safety: May block, however we still need to guarantee
 	     * atomicity with the timers, so hold the lock anyway */
-	    pthread_mutex_lock(&server);
+	    pthread_mutex_lock(&timer);
 	    bacnet_npdu_handler(&src, rx_buf, pdu_len);
-	    pthread_mutex_unlock(&server);
+	    pthread_mutex_unlock(&timer);
 	}
 
 	ms_tick();
