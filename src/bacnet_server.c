@@ -41,8 +41,8 @@ struct list_object_s {
  * BACnet client will print "Successful match" whenever it is able to receive
  * this set of data. Note that you will not have access to the RANDOM_DATA_POOL
  * for your final submitted application. */
-static uint16_t test_data[] = {
-    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
+//static uint16_t test_data[] = {
+//    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
 #define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
 
 static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list is locked
@@ -92,8 +92,8 @@ static void add_to_list(uint16_t input,struct list_object_s **list_head) {
 static struct list_object_s *list_get_first(struct list_object_s **list_head) {
     struct list_object_s *first_item;
 
-    first_item = list_head;
-    list_head = list_head->next;
+    first_item = *list_head;
+    *list_head = (*list_head)->next;
 
     return first_item;
 }
