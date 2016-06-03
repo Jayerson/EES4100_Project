@@ -13,7 +13,7 @@
 #include <libbacnet/ai.h>
 #include "bacnet_namespace.h"
 
-#define BACNET_INSTANCE_NO	    12						//change instance
+#define BACNET_INSTANCE_NO	    12						//change instance to 48
 #define BACNET_PORT		    0xBAC1
 #define BACNET_INTERFACE	    "lo"
 #define BACNET_DATALINK_TYPE	    "bvlc"
@@ -25,29 +25,26 @@
 
 #if RUN_AS_BBMD_CLIENT
 #define BACNET_BBMD_PORT	    0xBAC0
-#define BACNET_BBMD_ADDRESS	    "127.0.0.1"					//change ip
+#define BACNET_BBMD_ADDRESS	    "127.0.0.1"					//change ip "140.159.160.7"
 #define BACNET_BBMD_TTL		    90
 #endif
 
 struct list_object_s {
-    uint16_t mdata;                  /* 8 bytes */
+    uint16_t mdata;                 /* 8 bytes */
     struct list_object_s *next;     /* 8 bytes */
 };
-
-// change address here: linked list setup below
 
 /* If you are trying out the test suite from home, this data matches the data
  * stored in RANDOM_DATA_POOL for device number 12
  * BACnet client will print "Successful match" whenever it is able to receive
  * this set of data. Note that you will not have access to the RANDOM_DATA_POOL
  * for your final submitted application. */
-//static uint16_t test_data[] = {
-//    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
+static uint16_t test_data[] = {
+    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
 #define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
 
 static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list is locked
 static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;			// is list ready
-static pthread_cond_t list_data_flush = PTHREAD_COND_INITIALIZER;		// is list flushed
 static pthread_mutex_t timer = PTHREAD_MUTEX_INITIALIZER;		// tells if timer is active
 
 static struct list_object_s *list_head[INST_NO];		// pointer to start of list
@@ -71,12 +68,12 @@ static void add_to_list(uint16_t input,struct list_object_s **list_head) {
     /* list_head is shared between threads, need to lock before access */
     pthread_mutex_lock(&list_lock);
 
-    if (list_head == NULL) {
+    if (*list_head == NULL) {
         /* Adding the first object */
-        list_head = new_item;
+        *list_head = new_item;
     } else {
         /* Adding the nth object */
-        last_item = list_head;
+        last_item = *list_head;
         while (last_item->next) last_item = last_item->next;
         last_item->next = new_item;
     }
@@ -98,22 +95,12 @@ static struct list_object_s *list_get_first(struct list_object_s **list_head) {
     return first_item;
 }
 
-//clears the list
-static void list_flush(void) {
-    pthread_mutex_lock(&list_lock);
-
-    while (list_head) {
-        pthread_cond_signal(&list_data_flush);
-        pthread_cond_wait(&list_data_flush, &list_lock);
-    }
-    pthread_mutex_unlock(&list_lock);
-}
-
 // this server sends to BACnet
 static int Update_Analog_Input_Read_Property(
 		BACNET_READ_PROPERTY_DATA *rpdata) {
 
     struct list_object_s *cur_obj;				//structure: current data object
+
     int insta_num = bacnet_Analog_Input_Instance_To_Index(
 			rpdata->object_instance);		//current instance
 
@@ -122,7 +109,11 @@ static int Update_Analog_Input_Read_Property(
 
 	cur_obj = list_get_first(&list_head[insta_num]);			//calls list first item
 	printf("AI_Present_Value request for instance %i\n", insta_num);
-    bacnet_Analog_Input_Present_Value_Set(insta_num, cur_obj->mdata);		//sends current data to current instance
+    //bacnet_Analog_Input_Present_Value_Set(insta_num, cur_obj->mdata);		//sends current data to current instance
+
+    static int index;
+    bacnet_Analog_Input_Present_Value_Set(0, test_data[index++]);		//test data
+    if (index == NUM_TEST_DATA) index = 0;
 
 not_pv:
     return bacnet_Analog_Input_Read_Property(rpdata);
@@ -225,7 +216,7 @@ static void ms_tick(void) {
 		    bacnet_handler_##handler)
 
 // client to modbus
-int *server_connect (void) {
+static void *server_connect (void *check) {
   modbus_t *mb;
   uint16_t tab_reg[32];
   int cnt;
@@ -237,7 +228,7 @@ int *server_connect (void) {
   if (modbus_connect(mb) == -1) {
      fprintf(stderr, "Connection failed: %s\n", modbus_strerror (errno));
      modbus_free(mb);
-     return -1;
+     return (check);
      }
 	// Read 5 registers from the address 0
 while (1)
@@ -259,8 +250,6 @@ int main(int argc, char **argv) {
     uint16_t pdu_len;
     BACNET_ADDRESS src;
     pthread_t minute_tick_id, second_tick_id, server_id;
-
-    list_flush();		//clear before starting
 
     bacnet_Device_Set_Object_Instance_Number(BACNET_INSTANCE_NO);
     bacnet_address_init();
