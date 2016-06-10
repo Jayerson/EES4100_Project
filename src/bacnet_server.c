@@ -13,21 +13,21 @@
 #include <libbacnet/ai.h>
 #include "bacnet_namespace.h"
 
-#define BACNET_DEV		    12			//bacnet device number/port 48
+#define BACNET_DEV		    48			//bacnet device number/port 48
 #define BACNET_PORT		    0xBAC1
 #define BACNET_INTERFACE	    "lo"
 #define BACNET_DATALINK_TYPE	    "bvlc"
 #define BACNET_SELECT_TIMEOUT_MS    1	    /* ms */
 
-#define INST_NO		10
-#define BACNET_INO	4
+#define INST_NO		10		// allows for 10 sets of values
+#define BACNET_INO	4		// allows for 4 devices
 
 #define RUN_AS_BBMD_CLIENT	    1
-#define SERVER_IP		    "127.0.0.1"	//modbus server location (VU) "140.159.153.159"
+#define SERVER_IP		    "140.159.153.159"	//modbus server location (VU) "140.159.153.159"
 #define SLEEP_TIME		    100000
 
 #define BACNET_BBMD_PORT	    0xBAC0
-#define BACNET_BBMD_ADDRESS	    "127.0.0.1"	//bacnet client location (vu) "140.159.160.7"
+#define BACNET_BBMD_ADDRESS	    "140.159.160.7"	//bacnet client location (vu) "140.159.160.7"
 #define BACNET_BBMD_TTL		    90
 
 struct list_object_s {
