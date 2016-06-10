@@ -19,8 +19,7 @@
 #define BACNET_DATALINK_TYPE	    "bvlc"
 #define BACNET_SELECT_TIMEOUT_MS    1	    /* ms */
 
-#define INST_NO		10
-#define BACNET_INO	4
+#define BACNET_INO	4		// allows for 4 devices
 
 #define RUN_AS_BBMD_CLIENT	    1
 #define SERVER_IP		    "140.159.153.159"	//modbus server location (VU) "140.159.153.159"
@@ -48,7 +47,7 @@ static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list 
 static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;			// is list ready
 static pthread_mutex_t timer = PTHREAD_MUTEX_INITIALIZER;		// tells if timer is active
 
-static struct list_object_s *list_head[INST_NO];		// pointer to start of list
+static struct list_object_s *list_head[BACNET_INO];		// pointer to start of list
 
 // DO WORK HERE
 // adds to end of list
@@ -219,7 +218,7 @@ static void ms_tick(void) {
 // client to modbus
 static void *server_connect (void *check) {
   modbus_t *mb;
-  uint16_t tab_reg[32];
+  uint16_t tab_reg[BACNET_INO];
   int cnt;
 
   mb = modbus_new_tcp(SERVER_IP, 502);								// change ip
@@ -236,7 +235,7 @@ while (1)
   { usleep(SLEEP_TIME);
     modbus_read_registers(mb, BACNET_DEV, BACNET_INO, tab_reg);
 
-      for (cnt=0 ; cnt< INST_NO ; cnt++)
+      for (cnt=0 ; cnt< BACNET_INO ; cnt++)
 	add_to_list(tab_reg[cnt],&list_head[cnt]);	// loop here: linked list
         printf("got value %x\n", tab_reg[cnt]);
       }

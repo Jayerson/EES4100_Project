@@ -407,7 +407,7 @@ configure:12851: $? = 0
 configure:12909: result: yes
 configure:12914: checking for library containing pthread_create
 configure:12945: gcc -o conftest -g -O2   conftest.c  >&5
-/tmp/cc2BjCGi.o: In function `main':
+/tmp/cc2dmKri.o: In function `main':
 /home/Jay/Documents/VicUni/4thYr1stSem/OS/project/Project/conftest.c:34: undefined reference to `pthread_create'
 collect2: error: ld returned 1 exit status
 configure:12945: $? = 1
