@@ -13,20 +13,21 @@
 #include <libbacnet/ai.h>
 #include "bacnet_namespace.h"
 
-#define BACNET_DEV		    48			//bacnet device number/port
+#define BACNET_DEV		    12			//bacnet device number/port 48
 #define BACNET_PORT		    0xBAC1
 #define BACNET_INTERFACE	    "lo"
 #define BACNET_DATALINK_TYPE	    "bvlc"
 #define BACNET_SELECT_TIMEOUT_MS    1	    /* ms */
 
 #define INST_NO		10
+#define BACNET_INO	4
 
 #define RUN_AS_BBMD_CLIENT	    1
-#define SERVER_IP		    "140.159.153.159"	//modbus server location (VU)
+#define SERVER_IP		    "127.0.0.1"	//modbus server location (VU) "140.159.153.159"
 #define SLEEP_TIME		    100000
 
 #define BACNET_BBMD_PORT	    0xBAC0
-#define BACNET_BBMD_ADDRESS	    "140.159.160.7"	//bacnet client location (vu)
+#define BACNET_BBMD_ADDRESS	    "127.0.0.1"	//bacnet client location (vu) "140.159.160.7"
 #define BACNET_BBMD_TTL		    90
 
 struct list_object_s {
@@ -233,7 +234,7 @@ static void *server_connect (void *check) {
 	// Read INST_NO registers from the address BACNET_DEV
 while (1)
   { usleep(SLEEP_TIME);
-    modbus_read_registers(mb, BACNET_DEV, INST_NO, tab_reg);
+    modbus_read_registers(mb, BACNET_DEV, BACNET_INO, tab_reg);
 
       for (cnt=0 ; cnt< INST_NO ; cnt++)
 	add_to_list(tab_reg[cnt],&list_head[cnt]);	// loop here: linked list
