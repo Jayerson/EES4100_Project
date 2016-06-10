@@ -13,7 +13,7 @@
 #include <libbacnet/ai.h>
 #include "bacnet_namespace.h"
 
-#define BACNET_INSTANCE_NO	    12						//change instance to 48
+#define BACNET_DEV		    48			//bacnet device number/port
 #define BACNET_PORT		    0xBAC1
 #define BACNET_INTERFACE	    "lo"
 #define BACNET_DATALINK_TYPE	    "bvlc"
@@ -22,12 +22,12 @@
 #define INST_NO		10
 
 #define RUN_AS_BBMD_CLIENT	    1
+#define SERVER_IP		    "140.159.153.159"	//modbus server location (VU)
+#define SLEEP_TIME		    100000
 
-#if RUN_AS_BBMD_CLIENT
 #define BACNET_BBMD_PORT	    0xBAC0
-#define BACNET_BBMD_ADDRESS	    "127.0.0.1"					//change ip "140.159.160.7"
+#define BACNET_BBMD_ADDRESS	    "140.159.160.7"	//bacnet client location (vu)
 #define BACNET_BBMD_TTL		    90
-#endif
 
 struct list_object_s {
     uint16_t mdata;                 /* 8 bytes */
@@ -39,9 +39,9 @@ struct list_object_s {
  * BACnet client will print "Successful match" whenever it is able to receive
  * this set of data. Note that you will not have access to the RANDOM_DATA_POOL
  * for your final submitted application. */
-static uint16_t test_data[] = {
-    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
-#define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
+//static uint16_t test_data[] = {
+//    0xA4EC, 0x6E39, 0x8740, 0x1065, 0x9134, 0xFC8C };
+//#define NUM_TEST_DATA (sizeof(test_data)/sizeof(test_data[0]))
 
 static pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;		// tells if list is locked
 static pthread_cond_t list_ready = PTHREAD_COND_INITIALIZER;			// is list ready
@@ -68,7 +68,7 @@ static void add_to_list(uint16_t input,struct list_object_s **list_head) {
     /* list_head is shared between threads, need to lock before access */
     pthread_mutex_lock(&list_lock);
 
-    if (*list_head == NULL) {
+    if (*list_head == NULL) {					//changing to array type variable makes threading compile nicely
         /* Adding the first object */
         *list_head = new_item;
     } else {
@@ -109,11 +109,11 @@ static int Update_Analog_Input_Read_Property(
 
 	cur_obj = list_get_first(&list_head[insta_num]);			//calls list first item
 	printf("AI_Present_Value request for instance %i\n", insta_num);
-    //bacnet_Analog_Input_Present_Value_Set(insta_num, cur_obj->mdata);		//sends current data to current instance
+    bacnet_Analog_Input_Present_Value_Set(insta_num, cur_obj->mdata);		//sends current data to current instance
 
-    static int index;
-    bacnet_Analog_Input_Present_Value_Set(0, test_data[index++]);		//test data
-    if (index == NUM_TEST_DATA) index = 0;
+    //static int index;
+    //bacnet_Analog_Input_Present_Value_Set(0, test_data[index++]);		//test data
+    //if (index == NUM_TEST_DATA) index = 0;
 
 not_pv:
     return bacnet_Analog_Input_Read_Property(rpdata);
@@ -221,7 +221,7 @@ static void *server_connect (void *check) {
   uint16_t tab_reg[32];
   int cnt;
 
-  mb = modbus_new_tcp("127.0.0.1", 502);								// change ip
+  mb = modbus_new_tcp(SERVER_IP, 502);								// change ip
   modbus_connect(mb);
 
 	//check connection
@@ -230,13 +230,14 @@ static void *server_connect (void *check) {
      modbus_free(mb);
      return (check);
      }
-	// Read 5 registers from the address 0
+	// Read INST_NO registers from the address BACNET_DEV
 while (1)
-  { usleep(100000);
-    modbus_read_registers(mb, 0, 5, tab_reg);
-    printf("got value %x\n", tab_reg[0]);
+  { usleep(SLEEP_TIME);
+    modbus_read_registers(mb, BACNET_DEV, INST_NO, tab_reg);
+
       for (cnt=0 ; cnt< INST_NO ; cnt++)
 	add_to_list(tab_reg[cnt],&list_head[cnt]);	// loop here: linked list
+        printf("got value %x\n", tab_reg[cnt]);
       }
   modbus_close(mb);
   modbus_free(mb);
@@ -251,7 +252,7 @@ int main(int argc, char **argv) {
     BACNET_ADDRESS src;
     pthread_t minute_tick_id, second_tick_id, server_id;
 
-    bacnet_Device_Set_Object_Instance_Number(BACNET_INSTANCE_NO);
+    bacnet_Device_Set_Object_Instance_Number(BACNET_DEV);
     bacnet_address_init();
 
     /* Setup device objects */
